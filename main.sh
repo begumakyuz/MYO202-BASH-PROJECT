@@ -7,6 +7,7 @@
 # https://credsverse.com/credentials/a24f0e32-f0d1-4c3e-aa9f-85b500e90a14
 
 
+
 # "report.log" dosyası oluşturur, ISO formatında tarih ve saat yazdırılır. 
 echo "$(date -Iseconds | awk -F "T" '{print $1 , "-" , $2}' )" > report.log 
 
@@ -34,7 +35,7 @@ if [[ "$OS" == *"Linux"* ]]; then
     echo "---MAC adresi---">> report.log
     ifconfig | grep "ether" | awk '{print "Mac adresi: " $2}'>>report.log
 
-# Windows sistemini kontrol eder ve belirlenen bilgileri 'report.log' dosyasına yazar.
+# Windows sistemini kontrol eder ve wmic ile belirlenen tüm bilgileri eksiksiz yazar.
 elif [[ "$OS" == *"MINGW"* || "$OS" == *"CYGWIN"* ]]; then
     echo "---CPU bilgileri---">>report.log
     echo -n "İşlemci ismi: ">>report.log
@@ -64,25 +65,14 @@ else
     echo "-------------------------------*Bilinmeyen Işletim Sistemi*-------------------------------">>report.log 
 fi
 
-# Kullanıcıdan 'report.log' dosyasını şifrelemesi için parola istenir ve 'PAROLA' değişkenine atanır.
+# Kullanıcıdan 'report.log' dosyasını şifrelemesi için parola istenir (Şifre gizlidir, kodda açıkça yazmaz!)
 echo "Lütfen script şifresini giriniz:"
 read -s PAROLA
 
-# Arka planda gizli karakter doğrulama testi (MYO+202)
-if [ "${#PAROLA}" -eq 7 ] && [ "${PAROLA:0:3}" = "MYO" ] && [ "${PAROLA:3:1}" = "+" ] && [ "${PAROLA:4:3}" = "202" ]; then
-    :
-else
-    echo "Hatalı parola! İşlem iptal edildi."
-    rm -f report.log
-    exit 1
-fi
-
-# 'PAROLA' değişkeni GPG ile şifrelemek için kullanılır.
+# 'PAROLA' değişkeni doğrudan GPG ile AES256 şifrelemek için aktarılır.
 echo "$PAROLA" | gpg --batch --yes --passphrase-fd 0 --symmetric --cipher-algo AES256 report.log
 
-# 'report.log' dosyası kaldırılır.
+# Orijinal dosya temizlenir ve değişken bellekten silinir.
 rm -f report.log 
-
-# Sistem belleğinde 'PAROLA' değişkeni tamamen silinir.
 unset PAROLA
-echo "İşlem başarıyla tamamlandı. Eksiksiz report.log.gpg oluşturuldu."
+echo "İşlem başarıyla tamamlandı. Şifresiz ve temiz report.log.gpg oluşturuldu."
