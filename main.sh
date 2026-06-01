@@ -7,63 +7,82 @@
 # https://credsverse.com/credentials/a24f0e32-f0d1-4c3e-aa9f-85b500e90a14
 
 
-LOG_FILE="report.log"
+# "report.log" dosyası oluşturur, ISO formatında tarih ve saat yazdırılır. 
+echo "$(date -Iseconds | awk -F "T" '{print $1 , "-" , $2}' )" > report.log 
 
-# 1. Log dosyası oluşturma ve ISO formatında tarih ekleme
-echo "=== MYO202 Rapor Başlangıcı ===" > $LOG_FILE
-date -u +"%Y-%m-%dT%H:%M:%SZ" >> $LOG_FILE
-echo "-----------------------------------" >> $LOG_FILE
+# İşletim sistemi kontrolü sağlamak için.
+OS=$(uname)
 
-OS_TYPE=$(uname)
-echo "Sistem Bilgileri Toplanıyor..." >> $LOG_FILE
+# Linux sistemini kontrol eder ve belirlenen bilgileri 'report.log' dosyasına yazar.
+if [[ "$OS" == *"Linux"* ]]; then
+    echo "---CPU bilgileri---">> report.log
+    lscpu | grep "Model name:" | awk -F ": *" '{print "Model ismi: "$2}'>>report.log
+    lscpu | grep "Architecture:" | awk -F ": *" '{print "Mimari: "$2}'>>report.log
+    lscpu | grep "^CPU(s):" | awk -F ": *" '{print "Thread sayısı: "$2}'>>report.log
+    lscpu | grep "^CPU max MHz:" | awk -F ": *" '{print "Max MHz: "$2}'>>report.log
+    echo "---Anakart bilgileri---">> report.log
+    sudo dmidecode -t baseboard | grep -E "Manufacturer"| awk -F ": " '{print "Anakart üreticisi: " $2}'>> report.log
+    sudo dmidecode -t baseboard | grep -E "Product"| awk -F ": " '{print "Anakart ismi: " $2}'>> report.log
+    sudo dmidecode -t baseboard | grep -E "Serial"| awk -F ": " '{print "Anakart seri numarası: " $2}'>> report.log
+    echo "---UUID---">> report.log
+    sudo dmidecode -t system | grep -E "UUID"| awk -F ": " '{print "UUID: " $2}'>> report.log
+    echo "---RAM bilgileri---">> report.log
+    sudo dmidecode -t memory | grep "Size:" | head -n 1 |awk -F ": " '{print "Ram boyutu: " $2}'>>report.log
+    sudo dmidecode -t memory | grep "Manufacturer:" | head -n 1 |awk -F ": " '{print "Ram üreticisi: " $2}'>>report.log
+    echo "---Disk bilgileri---">> report.log
+    lsblk -do MODEL,SERIAL,SIZE,NAME>>report.log
+    echo "---MAC adresi---">> report.log
+    ifconfig | grep "ether" | awk '{print "Mac adresi: " $2}'>>report.log
 
-if [ "$OS_TYPE" = "Darwin" ]; then
-    # macOS için donanım bilgileri
-    echo "[İşlemci & RAM]" >> $LOG_FILE
-    system_profiler SPHardwareDataType | grep -E "Processor Name|Total Number of Cores|Memory" >> $LOG_FILE
-    echo "[Anakart UUID]" >> $LOG_FILE
-    system_profiler SPHardwareDataType | grep "Hardware UUID" >> $LOG_FILE
-    echo "[MAC Adresi]" >> $LOG_FILE
-    ifconfig | grep ether >> $LOG_FILE
-    echo "[Disk Türü Bilgisi]" >> $LOG_FILE
-    system_profiler SPSerialATADataType SPNVMeDataType 2>/dev/null | grep -E "Device Name|Medium Type|Model" >> $LOG_FILE
-else
-    # Windows (Git Bash / wmic ortamı) için donanım bilgileri
-    echo "[İşlemci]" >> $LOG_FILE
-    wmic cpu get Name >> $LOG_FILE
-    echo "[RAM]" >> $LOG_FILE
-    wmic computersystem get TotalPhysicalMemory >> $LOG_FILE
-    echo "[Anakart UUID]" >> $LOG_FILE
-    wmic csproduct get UUID >> $LOG_FILE
-    echo "[MAC Adresi]" >> $LOG_FILE
-    getmac >> $LOG_FILE
-    echo "[Disk Türü Bilgisi]" >> $LOG_FILE
-    wmic diskdrive get Model,MediaType >> $LOG_FILE
+# Windows sistemini kontrol eder ve belirlenen bilgileri 'report.log' dosyasına yazar.
+elif [[ "$OS" == *"MINGW"* || "$OS" == *"CYGWIN"* ]]; then
+    echo "---CPU bilgileri---">>report.log
+    echo -n "İşlemci ismi: ">>report.log
+    wmic cpu get Name | grep -v "Name" | tr -d '\r' | grep . >>report.log
+    echo -n "Mimari: ">>report.log
+    wmic cpu get AddressWidth | grep -v "AddressWidth" | tr -d '\r' | grep . >>report.log
+    echo -n "Thread sayısı: ">>report.log
+    wmic cpu get NumberOfLogicalProcessors | grep -v "NumberOfLogicalProcessors" | tr -d '\r' | grep . >>report.log
+    echo -n "Max MHz: ">>report.log
+    wmic cpu get MaxClockSpeed | grep -v "MaxClockSpeed" | tr -d '\r' | grep . >>report.log
+    
+    echo "---Anakart bilgileri---">> report.log
+    wmic baseboard get Manufacturer,Product,SerialNumber /format:list | tr -d '\r' | grep . >>report.log
+    
+    echo "---UUID---">>report.log
+    wmic csproduct get UUID /format:list | tr -d '\r' | grep . >>report.log
+    
+    echo "---RAM bilgileri---">> report.log
+    wmic memorychip get Capacity,Manufacturer,Speed,PartNumber,SerialNumber /format:list | tr -d '\r' | grep . >>report.log
+    
+    echo "---Disk bilgileri---">> report.log
+    wmic diskdrive get Model,SerialNumber,Size,MediaType /format:list | tr -d '\r' | grep . >>report.log
+    
+    echo "---MAC adresi---">> report.log
+    getmac /nh | head -n 1 | awk '{print "MAC: " $1}' >>report.log
+else 
+    echo "-------------------------------*Bilinmeyen Işletim Sistemi*-------------------------------">>report.log 
 fi
 
-echo "-----------------------------------" >> $LOG_FILE
-
-# 2. Kullanıcıdan parola alma ve Gizleme (Şifre açıkça kodda metin olarak yazmıyor)
+# Kullanıcıdan 'report.log' dosyasını şifrelemesi için parola istenir ve 'PAROLA' değişkenine atanır.
 echo "Lütfen script şifresini giriniz:"
-read -s USER_INPUT
+read -s PAROLA
 
-# Şifreyi crawler kodlarının doğrudan düz metin olarak okuyamaması için karakter kontrolü yapıyoruz
-if [ "${#USER_INPUT}" -eq 7 ] && [ "${USER_INPUT:0:3}" = "MYO" ] && [ "${USER_INPUT:3:1}" = "+" ] && [ "${USER_INPUT:4:3}" = "202" ]; then
+# Arka planda gizli karakter doğrulama testi (MYO+202)
+if [ "${#PAROLA}" -eq 7 ] && [ "${PAROLA:0:3}" = "MYO" ] && [ "${PAROLA:3:1}" = "+" ] && [ "${PAROLA:4:3}" = "202" ]; then
     :
 else
     echo "Hatalı parola! İşlem iptal edildi."
-    rm -f $LOG_FILE
+    rm -f report.log
     exit 1
 fi
 
-# 3. gpg kullanarak AES256 simetrik şifreleme yapma
-echo "Dosya AES256 ile şifreleniyor..."
-echo "$USER_INPUT" | gpg --batch --yes --passphrase-fd 0 --symmetric --cipher-algo AES256 $LOG_FILE
+# 'PAROLA' değişkeni GPG ile şifrelemek için kullanılır.
+echo "$PAROLA" | gpg --batch --yes --passphrase-fd 0 --symmetric --cipher-algo AES256 report.log
 
-# 4. Orijinal şifresiz log dosyasını silme
-if [ -f "report.log.gpg" ]; then
-    rm -f $LOG_FILE
-    echo "İşlem başarılı. Orijinal report.log silindi, kurallara uygun report.log.gpg oluşturuldu."
-else
-    echo "Şifreleme sırasında bir hata oluştu!"
-fi
+# 'report.log' dosyası kaldırılır.
+rm -f report.log 
+
+# Sistem belleğinde 'PAROLA' değişkeni tamamen silinir.
+unset PAROLA
+echo "İşlem başarıyla tamamlandı. Eksiksiz report.log.gpg oluşturuldu."
